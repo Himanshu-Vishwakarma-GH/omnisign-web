@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import Avatar from './components/Avatar'
+import HandAvatar from './components/HandAvatar'
 import SkeletonView from './components/SkeletonView'
 import {
   CONFIDENCE_THRESHOLD,
@@ -41,6 +41,7 @@ export default function App() {
   const [turns, setTurns] = useState<Turn[]>([])
   const [glossTokens, setGlossTokens] = useState<string[]>([])
   const [speechText, setSpeechText] = useState('')
+  const [interimText, setInterimText] = useState('')
   const [replayKey, setReplayKey] = useState(0)
   const [listening, setListening] = useState(false)
   const [speechSupported, setSpeechSupported] = useState(false)
@@ -57,6 +58,7 @@ export default function App() {
   const runningRef = useRef(false)
   const emergencyRef = useRef(emergencyMode)
   emergencyRef.current = emergencyMode
+  const recRef = useRef<SpeechRecognitionLike | null>(null)
   const transcriptEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -65,6 +67,7 @@ export default function App() {
     )
     return () => {
       cancelAnimationFrame(rafRef.current)
+      recRef.current?.stop()
       streamRef.current?.getTracks().forEach((t) => t.stop())
     }
   }, [])
@@ -272,20 +275,42 @@ export default function App() {
       return
     }
     if (listening) {
+      // Stop the live recognition (previously this only flipped the
+      // button state and left the recogniser running).
+      recRef.current?.stop()
+      recRef.current = null
       setListening(false)
+      setInterimText('')
       return
     }
     try {
       const rec = new Rec()
       rec.lang = 'en-US'
-      rec.interimResults = false
-      rec.onresult = (e: { results: { [i: number]: { [j: number]: { transcript: string } } } }) => {
-        const transcript = e.results[0][0].transcript
-        setSpeechText(transcript)
-        submitSpeechText(transcript)
+      rec.interimResults = true
+      rec.onresult = (e: SpeechRecognitionEventLike) => {
+        let interim = ''
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const res = e.results[i]
+          if (res.isFinal) {
+            const transcript = res[0].transcript
+            setSpeechText(transcript)
+            setInterimText('')
+            submitSpeechText(transcript)
+          } else {
+            interim += res[0].transcript
+          }
+        }
+        if (interim) setInterimText(interim)
       }
-      rec.onend = () => setListening(false)
-      rec.onerror = () => setListening(false)
+      rec.onend = () => {
+        setListening(false)
+        setInterimText('')
+      }
+      rec.onerror = () => {
+        setListening(false)
+        setInterimText('')
+      }
+      recRef.current = rec
       rec.start()
       setListening(true)
     } catch {
@@ -536,12 +561,42 @@ export default function App() {
         <section className="rounded-2xl border border-slate-800 bg-panel p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-base font-semibold">Speech → Sign</h2>
-            <span className="text-xs text-slate-400">Pose lexicon · 60 FPS</span>
+            <span className="text-xs text-slate-400">Rigged 3D hands · 60 FPS</span>
+          </div>
+
+          {/* Mic-first: tap the big mic and speak — the hands sign it live. */}
+          <div className="mb-3 flex items-center gap-3 rounded-xl border border-slate-700/80 bg-slate-900/60 p-3">
+            <button
+              onClick={toggleListening}
+              disabled={!speechSupported}
+              aria-label={listening ? 'Stop listening' : 'Tap to speak'}
+              aria-pressed={listening}
+              className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-2xl shadow-lg transition ${
+                listening
+                  ? 'animate-pulse bg-rose-600 text-white ring-4 ring-rose-500/40'
+                  : 'bg-cyan-500 text-slate-950 ring-4 ring-cyan-500/20 hover:bg-cyan-400'
+              } disabled:cursor-not-allowed disabled:opacity-40`}
+            >
+              🎙️
+            </button>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">
+                {listening ? 'Listening… tap the mic to stop' : 'Tap the mic and speak'}
+              </p>
+              <p className="truncate text-xs text-slate-400">
+                {listening
+                  ? interimText || 'Say something — e.g. “Hello, how are you today?”'
+                  : 'Your words are signed by the 3D hands below as you speak.'}
+              </p>
+              {listening && interimText && (
+                <p className="mt-1 truncate text-sm italic text-cyan-300">“{interimText}…”</p>
+              )}
+            </div>
           </div>
 
           <div className="aspect-video overflow-hidden rounded-xl bg-gradient-to-b from-slate-800 to-slate-900">
             {avatar3d ? (
-              <Avatar tokens={glossTokens} replayKey={replayKey} />
+              <HandAvatar tokens={glossTokens} replayKey={replayKey} />
             ) : (
               <SkeletonView tokens={glossTokens} replayKey={replayKey} />
             )}
@@ -551,7 +606,7 @@ export default function App() {
               onClick={() => setAvatar3d(true)}
               className={`flex-1 rounded-l-lg px-3 py-1.5 ${avatar3d ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-300'}`}
             >
-              3D avatar
+              3D hands
             </button>
             <button
               onClick={() => setAvatar3d(false)}
@@ -562,17 +617,6 @@ export default function App() {
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              onClick={toggleListening}
-              disabled={!speechSupported}
-              className={`rounded-lg px-4 py-2 text-sm font-medium ${
-                listening
-                  ? 'animate-pulse bg-rose-600 hover:bg-rose-500'
-                  : 'bg-cyan-500 text-slate-950 hover:bg-cyan-400'
-              } disabled:cursor-not-allowed disabled:opacity-40`}
-            >
-              {listening ? '● Listening… (tap to stop)' : '🎙️ Mic — speak'}
-            </button>
             <button
               onClick={() => glossTokens.length > 0 && setReplayKey((k) => k + 1)}
               className="rounded-lg border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800"
@@ -633,16 +677,38 @@ export default function App() {
         All processing happens on your device. Live camera recognition uses the real LexiSight
         weights (263 ISL words) — live human-signer accuracy not yet verified. Simulate Sign is a
         demo: procedural motion recognised by the bundled demo model, not by LexiSight.
+        <br />
+        3D hand model: “Rigged Hand” by J-Toastie, CC-BY, via Poly Pizza (
+        <a
+          className="underline hover:text-slate-300"
+          href="https://poly.pizza/m/BEy8jbxm6A"
+          target="_blank"
+          rel="noreferrer"
+        >
+          poly.pizza/m/BEy8jbxm6A
+        </a>
+        ).
       </footer>
     </div>
   )
 }
 
+interface SpeechRecognitionResultLike {
+  isFinal: boolean
+  [j: number]: { transcript: string }
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex: number
+  results: { length: number; [i: number]: SpeechRecognitionResultLike }
+}
+
 interface SpeechRecognitionLike {
   lang: string
   interimResults: boolean
-  onresult: ((e: { results: { [i: number]: { [j: number]: { transcript: string } } } }) => void) | null
+  onresult: ((e: SpeechRecognitionEventLike) => void) | null
   onend: (() => void) | null
   onerror: (() => void) | null
   start: () => void
+  stop: () => void
 }

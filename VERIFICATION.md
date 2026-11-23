@@ -419,3 +419,189 @@ self-test, test only, no sign-in, no webcam. Deploy run #15 (commit
 - MediaPipe Holistic asset URL (assumed by analogy, as before).
 - DevTools console not read in any browser session so far; "zero
   console errors" is not claimed.
+
+## 11. Speech-to-Sign upgrade — rigged 3D hands + mic-first (2026-11-23)
+
+### 11.1 Plan change (parent instruction, same day)
+
+The original brief was to download Blender 4.2 and build a rigged hand
+from scratch in a Python script. Blender 4.2.0 WAS downloaded
+(blender-4.2.0-linux-x64.tar.xz, 352,269,932 bytes, SHA-256
+4f4fd7646af01f6fee9d420408318381a6e52571268eb7cf9cd5033bd9e7a359)
+and extracted, and `blender --version` verified headless (Blender
+4.2.0, build 2024-07-16). The build was then STOPPED by a revised
+instruction: an open-source rigged hand had been found and verified,
+so no Blender build was done. The downloaded Blender files were
+deleted (tools/ is empty again); Blender was never installed and no
+hand was built from scratch.
+
+### 11.2 The hand model — source, licence, attribution
+
+- **Model:** "Rigged Hand" by J-Toastie, Poly Pizza,
+  https://poly.pizza/m/BEy8jbxm6A — "A simple animated and rigged hand
+  model", FBX/GLTF, licence **Creative Commons Attribution (CC-BY)**.
+- **File:** `web/public/models/hand.glb`, **91,424 bytes**, SHA-256
+  `32705e2ee2badc9df04886cc0705545d6640c34e927d4db67afff2802aec945e`
+  (copied from the already-downloaded /tmp/rigged-hand.glb; byte size
+  and hash verified after the copy and again after serving).
+- **Parsed contents (Python, glTF 2.0 binary):** 1 mesh ("Hand"),
+  1 skin, 20 joints, 1 material ("DefaultMaterial"), 1 animation
+  ("Scene", 19 channels, 8 keyframes over 0.29 s). Skin joints:
+  HandMain, ThumbRoot, ThumbMiddle, ThumbTop, IndexRoot, IndexF_lower,
+  IndexF_middle, IndexF_tip, MiddleRoot, MiddleF_lower, MiddleF_middle,
+  MiddleF_tip, RingRoot, RingF_lower, RingF_middle, RingF_tip,
+  PinkyRoot, PinkyF_lower, PinkyF_middle, PinkyF_tip
+  (plus *_end tip nodes and RootNode/Armature, 28 nodes total).
+- **Attribution (CC-BY requires it):** shown in the app footer
+  ("3D hand model: 'Rigged Hand' by J-Toastie, CC-BY, via Poly Pizza
+  (poly.pizza/m/BEy8jbxm6A)"), in README.md §"Attribution & licences",
+  and here. The model is used unmodified.
+- The model is a **LEFT hand** (its (spread, finger, palm) triad is
+  left-handed) with the palm facing roughly +Y in the loaded scene's
+  frame; the right-hand instance is a mirrored copy. See §11.4 for
+  how this was determined and what is still unverified about it.
+
+### 11.3 Model frame (measured from the GLB joint positions)
+
+Joint world positions were computed by composing the GLB node
+hierarchy in Python (FBX2glTF export, so the Armature node carries a
+~120° conversion rotation and scale 100; the mesh node scale is 380):
+- Fingers point along **MODEL_FINGER ≈ (-0.997, -0.074, -0.017)**
+  (HandMain -> MiddleF_tip_end, ~2.6 units long as loaded).
+- Knuckle spread **MODEL_SPREAD ≈ (-0.003, -0.185, 0.983)**
+  (orthonormalised index->pinky direction; raw tip-to-tip spread is
+  mostly +Z).
+- Palm normal **MODEL_PALM ≈ (-0.076, 0.980, 0.184)** = finger x spread.
+  The palm side was decided from the bundled "Scene" animation: as the
+  fingers curl, all four fingertips drift toward +Y (middle tip
+  -0.193 -> -0.105, ring -0.251 -> -0.128, pinky -0.275 -> -0.216),
+  i.e. toward +Y, so the palm faces +Y. The thumb sits slightly
+  dorsal in this model, so the thumb position alone is NOT reliable
+  evidence for the palm side.
+- Curl axis: the animation's finger-bone rotations are dominated by
+  their local Z component (e.g. IndexF_lower z: -0.004 -> 0.667,
+  MiddleF_lower z: 0.059 -> 0.719), so curl is applied as a rotation
+  about each bone's LOCAL Z axis, positive = curling toward the palm
+  (CURL_SIGN = +1 in handMapping.ts).
+- **UNVERIFIED:** the palm side and the curl sign/axis are inferred
+  from the animation, not from a visual check. If a browser test
+  shows the back of the hand where the palm should be, flip the palm
+  sign in the model-frame constants; if fingers bend backwards, flip
+  CURL_SIGN. Both are one-line changes in handMapping.ts.
+
+### 11.4 Mapping (src/lib/handMapping.ts — pure, unit-tested)
+
+- **Per-finger curl** from that finger's tip-to-MCP distance, via a
+  piecewise-linear inverse of the measured distance curve (distances
+  at curls 0, 0.25, 0.5, 0.75, 1, measured from motionGen's
+  handLandmarks). A two-point linear map was tried first and rejected:
+  the relation is strongly nonlinear (at curl 0.5 only ~26% of the
+  tip-distance change has happened — CUP read as 0.26).
+- **Thumb:** the literal MCP (landmark 2) -> tip distance is nearly
+  insensitive to curl (0.0314 -> 0.0309), so the thumb uses the CMC
+  (landmark 1) -> tip span. The thumb curve is side-aware: motionGen's
+  thumb chain curls the LEFT thumb's tip toward the wrist
+  (0.0475 -> 0.0366) but swings the RIGHT thumb's tip AWAY
+  (0.0475 -> 0.0541, saturating above curl 0.75) — a generator
+  asymmetry, documented in the code. The four fingers are
+  side-independent.
+- **Wrist orientation:** finger direction = wrist -> middle fingertip
+  from the HAND landmarks (not the forearm: the lexicon's rest pose
+  holds the fingers up while the forearm points down). Palm normal =
+  cross(middleMCP - wrist, indexMCP - pinkyMCP), negated for the left
+  hand (the hands are mirror images, so a fixed cross product flips
+  sign). Target basis [spread, finger, palm] is left-handed for the
+  left hand and right-handed for the mirrored right hand; the returned
+  quaternion is Q = R_target * mirror for the right hand, R_target
+  for the left.
+- **Curl -> bones:** total 1.9 rad (matching motionGen's total bend),
+  shares [0.45, 0.35, 0.20] over lower/middle/tip; thumb [0.55, 0.45]
+  over ThumbMiddle/ThumbTop. Finger Root bones (metacarpals) stay at
+  bind rotation (they set the fan, not the curl).
+- **Tests (src/lib/handMapping.test.ts, 10 tests):** curls recovered
+  from generated hands — OPEN all < 0.15, FIST all > 0.85, POINT
+  (index extended, rest curled), PEACE, CUP near 0.5 for every finger;
+  bone angles sum to 1.9 rad at curl 1; wrist quaternion maps the
+  model finger onto the landmark finger direction (dot > 0.99) and
+  the model palm onto -Z at rest for both hands; model basis is
+  orthonormal. Two real bugs were caught by these tests while writing
+  the module: the palm re-orthogonalisation cross-product order
+  (finger x (finger x palm) == -palm for the right hand) and the
+  thumb's side-dependent curl direction.
+
+### 11.5 HandAvatar component (src/components/HandAvatar.tsx)
+
+- Loads `models/hand.glb` with three.js GLTFLoader (no new
+  dependencies; @types/three was already installed). Instantiates the
+  hand twice: left as built, right via SkeletonUtils.clone inside a
+  scale.x = -1 wrapper (three.js flips winding for negative-
+  determinant transforms, so the mirrored hand does not render
+  inside-out). Each hand pivots around its wrist: the loaded scene is
+  offset by -HandMain's position (~(1.166, 0.123, 0) in the loaded
+  scene) inside a group scaled 0.2 (model ~2.6 units -> ~0.5).
+- Drives the bones from the same lexicon frames as the old Avatar
+  (loadLexicon, framesForTokens, 12 fps stepping, restFrame when no
+  tokens). Wrist position lerps (0.25) and orientation SLERPs (0.2)
+  every requestAnimationFrame; bone quaternions SLERP (0.2) toward
+  bind * local-Z curl targets — smooth 60 fps motion from 12 fps
+  frames. Idle bobbing kept minimal (scene y ±0.004).
+- **Load failure falls back to the old Avatar** (Avatar.tsx kept
+  untouched) instead of a blank panel.
+
+### 11.6 Mic-first Speech-to-Sign (src/App.tsx)
+
+- The Speech-to-Sign panel is now mic-first: a large circular mic
+  button (64 px, pulsing ring while listening) at the top of the
+  panel, above the 3D hands. It reuses the existing SpeechRecognition
+  wiring — no new STT code: `interimResults` is now true, so the
+  live interim transcript shows under the button while listening
+  ("…"), and each final result feeds the existing gloss pipeline
+  (gloss pills -> hand signs -> transcript entry), exactly like a
+  typed submit.
+- **Bug fixed along the way:** the old toggle only flipped the
+  button state when stopping — it never called `rec.stop()`, so the
+  recogniser kept listening. The recogniser instance is now kept in a
+  ref and stopped on toggle-off and on unmount.
+- Typed input + "Sign it" kept as fallback (and is the only input
+  when `speechSupported` is false). TTS behaviour unchanged
+  (commitWord still speaks recognised signs). The 3D/Skeleton toggle
+  now reads "3D hands" / "Skeleton view" and shows HandAvatar.
+  Avatar.tsx is still used — as HandAvatar's load-failure fallback.
+
+### 11.7 Verification
+
+- **Tests: 39/39 pass** (was 29/29; +10 handMapping tests).
+  Full suite: omnisign 20, lexisight 8, fallback 1, handMapping 10.
+- **Build: `npm run build` passes** (tsc + vite). Main JS chunk grew
+  664 kB -> 2,437 kB (three.js + GLTFLoader/SkeletonUtils now in the
+  main bundle; the TF.js chunk is separate at 268.86 kB in this
+  build's listing).
+- **Preview smoke test** (`vite preview --port 4177`): app root 200
+  (635 B), `models/hand.glb` 200, **91,424 B, model/gltf-binary**,
+  SHA-256 of the served file identical to the source
+  (32705e2e…945e); lexicon 200 (709,156 B).
+- **NOT verified:** no live-browser test of HandAvatar has been run
+  in this task (parent handles browser verification). In particular
+  the palm side, curl sign/axis, hand scale (~0.5 units) and camera
+  framing, and whether the mirrored right hand looks correct are all
+  inferred from file parsing, not seen rendering. The interim
+  transcript and mic stop behaviour also need a live browser test
+  (Web Speech API is Chrome-only).
+
+### 11.8 Still unverified / honest limits (do not over-claim)
+
+- The gestures are driven by the PROCEDURAL lexicon, so the hands
+  sign approximate, stylised motions — not verified ISL — just as
+  with the old avatar. The hand model makes the gestures look
+  realistic; it does not make them linguistically correct.
+- The hand is a low-poly stylised model (single "DefaultMaterial",
+  no textures), not photorealistic; fingerspelling hand-shape
+  accuracy is unmeasured.
+- The thumb's right-hand curl saturates above 0.75 (generator
+  asymmetry, §11.4) — the right thumb may look slightly more curled
+  than the left on mid-curl shapes such as CUP.
+- Live human-signer LexiSight accuracy, 126-dim hand order,
+  transformer norm placement, MediaPipe Holistic asset URL: still
+  unverified, as before (§9.7/§10.4).
+- DevTools console not read in this task; "zero console errors" is
+  not claimed.

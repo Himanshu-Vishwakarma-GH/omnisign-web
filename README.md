@@ -182,6 +182,11 @@ backend (very slow: epoch 1 took >5 min).
   no LexiSight code). Note: GitHub's API reports **no licence file** on
   that repo, despite an MIT badge in its README — treat the weights'
   licence as unconfirmed.
+- **"Rigged Hand" 3D hand model** — by J-Toastie, licensed CC-BY, via
+  Poly Pizza (https://poly.pizza/m/BEy8jbxm6A) — the rigged GLB hand
+  (`web/public/models/hand.glb`, 91,424 bytes) used by the Speech-to-Sign
+  3D hands. Credit is also shown in the app footer. No Blender build
+  was used: the model is the Poly Pizza asset, unmodified.
 - **MediaPipe Tasks Vision** — Apache-2.0 — Holistic landmarker.
 - **spoken-to-signed-translation / pose-format** (sign.mt) — MIT — the
   pose-lexicon architecture this app follows; no code copied.
