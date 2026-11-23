@@ -15,7 +15,7 @@ import {
   extractFeatures,
 } from './lib/holistic'
 import { generateWordSequence } from './lib/motionGen.mjs'
-import { getModel, speak, type InferenceResult, type ModelSource } from './lib/tfjsClient'
+import { getFallbackModel, getModel, speak, type InferenceResult, type ModelSource } from './lib/tfjsClient'
 
 type Mode = 'standard' | 'performance'
 type Status = 'idle' | 'loading-model' | 'ready' | 'error'
@@ -117,35 +117,48 @@ export default function App() {
     }
   }, [commitWord])
 
-  /** Demo mode: feed a procedural 30-frame landmark sequence for the sign. */
+  /**
+   * Demo mode: feed a procedural 30-frame landmark sequence for the
+   * sign, recognised by the PROCEDURAL demo model only
+   * (getFallbackModel). The real LexiSight weights must NOT be used
+   * here: they were trained on real signers and return low-confidence
+   * garbage on procedural motion (live test 23 Nov 2026: TOMORROW ->
+   * Afternoon 22.7%, THANKYOU -> Afternoon 29.3%, nothing spoken).
+   * Unlike the camera path, a demo sign commits on a single
+   * high-confidence recognition — there is no 5-frame consensus to
+   * build up from a generated sequence.
+   */
   const simulateSign = useCallback(async () => {
     setStatus('loading-model')
-    setStatusMsg('Loading TF.js model… (first run downloads the TF.js runtime)')
+    setStatusMsg('Loading demo model… (simulated landmarks, not a real signer)')
     setCommitted(null)
     debouncerRef.current.reset()
     try {
-      const model = await getModel()
+      const model = await getFallbackModel()
       setModelSource(model.source)
-      // Procedural landmarks in LexiSight's 225-dim format (seeded demo).
+      // Procedural landmarks in the 225-dim format (seeded demo).
       const raw = generateWordSequence(simWord, Math.floor(Math.random() * 1e6))
       const canvas = canvasRef.current
       if (canvas) {
         const ctx = canvas.getContext('2d')
         if (ctx) drawHolisticSkeleton(ctx, raw.slice(29 * 225), canvas.width, canvas.height)
       }
-      const buf = new HolisticBuffer()
-      for (let f = 0; f < 30; f++) {
-        buf.push(raw.slice(f * 225, (f + 1) * 225))
+      const result = await model.predict(raw)
+      setDetected(result)
+      setStatus('ready')
+      setStatusMsg(
+        `Demo sign recognised by the procedural demo model — last inference ${result.latencyMs.toFixed(1)} ms. Live camera uses LexiSight weights.`,
+      )
+      if (result.confidence >= CONFIDENCE_THRESHOLD) {
+        commitWord(result.word, result.confidence)
       }
-      bufferRef.current = buf
-      await inferBuffer()
     } catch (err) {
       setStatus('error')
       setStatusMsg(
-        `Could not load the sign model: ${err instanceof Error ? err.message : String(err)}`,
+        `Could not load the demo model: ${err instanceof Error ? err.message : String(err)}`,
       )
     }
-  }, [simWord, inferBuffer])
+  }, [simWord, commitWord])
 
   /** Webcam loop: MediaPipe Holistic -> 225-dim features -> buffer -> infer. */
   const startCamera = useCallback(async () => {
@@ -321,8 +334,8 @@ export default function App() {
                 }`}
                 title={
                   modelSource === 'lexisight'
-                    ? 'Real LexiSight weights loaded'
-                    : 'Synthetic-trained fallback model — see README to add real LexiSight weights'
+                    ? 'Real LexiSight weights loaded — live camera recognition'
+                    : 'Procedural demo model — trained on simulated motion, not real signers'
                 }
               >
                 {modelSource === 'lexisight' ? 'LexiSight weights' : 'Synthetic model'}
@@ -394,7 +407,11 @@ export default function App() {
           {/* Demo mode */}
           <div className="mt-3 rounded-xl border border-slate-700/80 bg-slate-900/60 p-3">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Demo mode — no webcam needed · simulated landmarks
+              Demo mode — no webcam needed · simulated landmarks · procedural demo model
+            </p>
+            <p className="mb-2 text-[11px] text-slate-500">
+              Simulated sign (demo motion) — recognised by the bundled demo model. Live camera
+              uses the real LexiSight weights.
             </p>
             <div className="flex flex-wrap gap-2">
               <select
@@ -454,7 +471,8 @@ export default function App() {
           )}
           <p className="mt-2 text-xs text-slate-400">{statusMsg}</p>
           <p className="mt-1 text-[11px] text-slate-500">
-            A word is spoken only when confidence &gt; 85% for more than 5 consecutive frames.
+            Live camera: a word is spoken only when confidence &gt; 85% for more than 5
+            consecutive frames. Demo mode commits a single high-confidence recognition.
             Raw video frames stay in browser memory and are discarded after inference.
           </p>
         </section>
@@ -612,8 +630,9 @@ export default function App() {
       <footer className="mx-auto max-w-7xl px-6 pb-6 text-center text-[11px] text-slate-500">
         OmniSign v2 — everyday conversation first, emergency mode as a feature · MediaPipe Holistic
         (33 pose + 2×21 hand landmarks) · TF.js · LexiSight hands-only 126-dim model (30×225 capture) · Pose lexicon avatar ·
-        All processing happens on your device. Recognition model: synthetic-trained fallback unless
-        real LexiSight weights are added (see README) — live human-signer accuracy not yet verified.
+        All processing happens on your device. Live camera recognition uses the real LexiSight
+        weights (263 ISL words) — live human-signer accuracy not yet verified. Simulate Sign is a
+        demo: procedural motion recognised by the bundled demo model, not by LexiSight.
       </footer>
     </div>
   )

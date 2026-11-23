@@ -27,6 +27,10 @@
  * WATER, YES, NO, WHAT, WHERE, WHEN, etc. — cannot be recognised by
  * the LexiSight model; the transcript only ever shows labels the
  * loaded model can actually produce.
+ *
+ * Simulate Sign uses the fallback directly via getFallbackModel()
+ * (procedural demo motion is the only input the fallback recognises);
+ * the live camera path uses getModel() (LexiSight first).
  */
 import './lexisightLayers'
 import { FRAMES, FEATURE_DIM } from './holistic'
@@ -63,6 +67,7 @@ type Tfjs = typeof import('@tensorflow/tfjs')
 type LayersModel = import('@tensorflow/tfjs').LayersModel
 
 let modelPromise: Promise<LoadedModel> | null = null
+let fallbackPromise: Promise<LoadedModel> | null = null
 
 function baseUrl(): string {
   return import.meta.env.BASE_URL
@@ -175,6 +180,55 @@ function rankProbs(probs: ArrayLike<number>, labels: string[]): InferenceResult 
   return { word: top[0].word, confidence: top[0].confidence, latencyMs: 0, top3: top }
 }
 
+/**
+ * Load ONLY the bundled procedural fallback model
+ * (`models/omnisign_tfjs/` — Conv1D, trained on procedural 225-dim
+ * sequences for the 88-word conversation vocabulary). This is the model
+ * Simulate Sign must use: procedural motion is the only input it can
+ * recognise (the real LexiSight weights were trained on real signers
+ * and return low-confidence garbage on procedural sequences — live
+ * test 23 Nov 2026: TOMORROW -> Afternoon 22.7%, THANKYOU ->
+ * Afternoon 29.3%). It is NOT trained on real signers; the live
+ * camera path must never use it.
+ */
+async function loadFallbackModel(tf: Tfjs): Promise<LoadedModel> {
+  const labels = await fetchJson<string[]>(`${baseUrl()}models/omnisign_tfjs/labels.json`)
+  if (!labels) {
+    throw new Error('Fallback model labels not found (models/omnisign_tfjs/labels.json).')
+  }
+  const model = await tf.loadLayersModel(`${baseUrl()}models/omnisign_tfjs/model.json`)
+  return {
+    source: 'synthetic',
+    labels,
+    numClasses: labels.length,
+    predict: async (tensor) => {
+      const input = tf.tensor(tensor, [1, FRAMES, FEATURE_DIM], 'float32')
+      const t0 = performance.now()
+      const out = model.predict(input) as import('@tensorflow/tfjs').Tensor
+      const data = (await out.data()) as Float32Array
+      const latencyMs = performance.now() - t0
+      input.dispose()
+      out.dispose()
+      // Fallback output is already a softmax — use it directly.
+      return { ...rankProbs(data, labels), latencyMs }
+    },
+  }
+}
+
+/** Simulate Sign's model: the procedural fallback only, never LexiSight. */
+export function getFallbackModel(): Promise<LoadedModel> {
+  if (!fallbackPromise) {
+    fallbackPromise = (async () => {
+      const tf = await loadTfjs()
+      return loadFallbackModel(tf)
+    })()
+    fallbackPromise.catch(() => {
+      fallbackPromise = null
+    })
+  }
+  return fallbackPromise
+}
+
 export function getModel(): Promise<LoadedModel> {
   if (!modelPromise) {
     modelPromise = (async (): Promise<LoadedModel> => {
@@ -246,30 +300,8 @@ export function getModel(): Promise<LoadedModel> {
           console.warn('[omnisign] LexiSight weights present but unloadable, using fallback:', e)
         }
       }
-      // 2) Bundled synthetic-trained fallback.
-      const labels = await fetchJson<string[]>(`${baseUrl()}models/omnisign_tfjs/labels.json`)
-      if (!labels) {
-        throw new Error(
-          'No sign-recognition model found (tried models/lexisight/ and models/omnisign_tfjs/).',
-        )
-      }
-      const model = await tf.loadLayersModel(`${baseUrl()}models/omnisign_tfjs/model.json`)
-      return {
-        source: 'synthetic',
-        labels,
-        numClasses: labels.length,
-        predict: async (tensor) => {
-          const input = tf.tensor(tensor, [1, FRAMES, FEATURE_DIM], 'float32')
-          const t0 = performance.now()
-          const out = model.predict(input) as import('@tensorflow/tfjs').Tensor
-          const data = (await out.data()) as Float32Array
-          const latencyMs = performance.now() - t0
-          input.dispose()
-          out.dispose()
-          // Fallback output is already a softmax — use it directly.
-          return { ...rankProbs(data, labels), latencyMs }
-        },
-      }
+      // 2) Bundled procedural fallback (LexiSight missing or unloadable).
+      return loadFallbackModel(tf)
     })()
     modelPromise.catch(() => {
       modelPromise = null

@@ -311,3 +311,111 @@ emergency words (DOCTOR, FAMILY, HOSPITAL, MEDICINE, POLICE).
 - MediaPipe Holistic asset URL (assumed by analogy, as before).
 - DevTools console not read in this task; "zero console errors" is
   not claimed.
+
+## 10. Live self-test of the deployed v2 (23 Nov 2026, 11:06–11:09 IST) + Simulate fix
+
+Live URL https://himanshu-vishwakarma-gh.github.io/omnisign-web/ — browser
+self-test, test only, no sign-in, no webcam. Deploy run #15 (commit
+7682cb8) had finished Success (48 s) before the test.
+
+### 10.1 What worked
+
+- Model loads lazily on first use (panel says "Model not loaded yet"
+  until then — by design, no "Ready" state on initial load; no error
+  banner, no failed-load message). First Simulate: status "Loading…"
+  → "Ready" with the **"LexiSight weights" badge** and "Model ready
+  (LexiSight weights) — last inference …". Warm inference **52.8 ms**
+  (first run 4,161.8 ms including the TF.js runtime + model download).
+- Speech-to-Sign: "Hello, how are you today?" → gloss pills HELLO,
+  YOU, TODAY, HOW; 3D avatar animated (arm extended, back to neutral
+  after ~4 s); sentence added to the conversation. "What is your
+  name?" → gloss pills YOUR, NAME, WHAT — exactly the expected order.
+- Emergency mode: header turns red "🚨 Emergency mode ON", Simulate
+  dropdown restricted to emergency words (default Help), red-bordered
+  "EMERGENCY QUICK SIGNS — TAP TO SIGN" section with all 20 chips
+  (Help, Doctor, Pain, Water, Yes, No, Family, Emergency, Hospital,
+  Medicine, Stop, Wait, Call, Police, Fire, Hurt, Breathe, Allergy,
+  Thank you, Please).
+- Performance 15 FPS toggle works (header badge "Performance · 15 FPS").
+- DevTools console could NOT be opened in this browser session
+  (Ctrl+Shift+J had no visible effect) — **"zero console errors" is
+  not claimed**. No visible error banner at any stage. The browser tab
+  was lost once (connection_lost) right after clicking "↻ Replay";
+  the Speech-to-Sign test was re-run after reopening and reproduced
+  the same gloss pills and avatar animation.
+
+### 10.2 What failed — Simulate Sign misrecognised (root cause found)
+
+- Simulate "Tomorrow" → **Afternoon 22.7%** (top 3: Afternoon 22.7%,
+  Wednesday 20.1%, Train 4.6%), latency 4,161.8 ms — "below 85% —
+  not spoken", conversation stayed empty.
+- Simulate "Thank you" → **Afternoon again, 29.3%** (top 3: Afternoon
+  29.3%, Wednesday 14.7%, Train 6.2%), latency 52.8 ms — also below
+  threshold, also absent from the conversation.
+- Root cause: Simulate fed PROCEDURAL motion sequences into the real
+  LexiSight model, which was trained on real signers — procedural
+  motion is not real ISL, so the real model returns low-confidence
+  wrong answers. This was already flagged as expected-wrong in §9.4
+  (procedural WATER/HELLO/THANKYOU/DOCTOR → top-1 WEDNESDAY/
+  AFTERNOON); the live test confirmed it in the browser. This is a
+  demo-input mismatch, not a LexiSight weights bug.
+- Second defect found by the same test: the App footer still said
+  "Recognition model: synthetic-trained fallback unless real LexiSight
+  weights are added (see README)" — stale and contradictory to the
+  "LexiSight weights" badge shown on the same page.
+
+### 10.3 The fix (this task, not yet deployed)
+
+- `src/lib/tfjsClient.ts`: new exported `getFallbackModel()` — loads
+  ONLY the bundled procedural fallback (`models/omnisign_tfjs/`,
+  Conv1D trained on procedural 225-dim sequences). The previous
+  fallback-loading code was extracted into `loadFallbackModel(tf)`
+  and is now shared by `getModel()`'s fallback branch and
+  `getFallbackModel()`; `getModel()` behaviour for the camera path is
+  unchanged (LexiSight first, fallback only if LexiSight is missing
+  or unloadable).
+- `src/App.tsx` — `simulateSign` now uses `getFallbackModel()` and
+  commits directly on a single recognition at/above the 85%
+  threshold (no 5-frame debouncer — a generated sequence has no
+  consensus to build up). Live camera inference still goes through
+  `inferBuffer()` → `getModel()` (LexiSight) with the 85% threshold
+  and 5-frame consensus unchanged. UI labels now say what is what:
+  Demo panel header "Demo mode — no webcam needed · simulated
+  landmarks · procedural demo model" plus "Simulated sign (demo
+  motion) — recognised by the bundled demo model. Live camera uses
+  the real LexiSight weights."; header badge tooltip for the
+  synthetic model now reads "Procedural demo model — trained on
+  simulated motion, not real signers"; the note under the readout now
+  distinguishes camera (5-frame consensus) from demo (single
+  high-confidence recognition). Footer rewritten: "Live camera
+  recognition uses the real LexiSight weights (263 ISL words) — live
+  human-signer accuracy not yet verified. Simulate Sign is a demo:
+  procedural motion recognised by the bundled demo model, not by
+  LexiSight."
+- New test `src/lib/fallback.test.ts` (tfjs-node, loads the real
+  weights from disk): TOMORROW, THANKYOU, WATER, HELLO procedural
+  sequences (fixed seed 12345) all come back top-1 with confidence
+  > 0.85, and all 20 emergency words are asserted present in the
+  fallback's 88-label vocabulary. **Tests: 29/29 pass** (was 28/28).
+  Build: `npm run build` passes (tsc + vite). Preview smoke test
+  (`vite preview --port 4176`): all 200 with exact byte sizes —
+  tfjs model.json 10,173 B, shard 1,242,652 B, static model.json
+  9,084 B, shard 310,160 B, fallback model.json 3,124 B, weights.bin
+  332,000 B, lexicon 709,156 B. The built bundle was grep-checked
+  to contain the new footer text.
+- Not yet done (parent agent's job): push these changes and redeploy,
+  then re-run the live browser self-test — Simulate TOMORROW and
+  THANKYOU must now return the selected word above 85% and reach the
+  conversation transcript.
+
+### 10.4 Still unverified (do not over-claim)
+
+- Live human-signer accuracy of the LexiSight model (no real-webcam
+  test with a live signer has been run) and fingerspelling accuracy
+  on real hands.
+- 126-dim hand order (assumed left-then-right, dims 99..224),
+  training-time normalisation, transformer norm placement (post-norm
+  assumed; pre-norm also loads).
+- MediaPipe Holistic asset URL (assumed by analogy, as before).
+- DevTools console not read in any browser session so far; "zero
+  console errors" is not claimed.
