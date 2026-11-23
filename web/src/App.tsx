@@ -322,40 +322,67 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-ink text-slate-100">
-      <header className="border-b border-slate-800 px-4 py-3 sm:px-6">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">
-              OmniSign <span className="text-accent">— Everyday Conversation, Signed &amp; Spoken</span>
-            </h1>
-            <p className="text-xs text-slate-400">
-              100% on-device · no video ever leaves your browser · {VOCAB_WORDS.length} conversation
-              signs + A–Z finger-spelling · emergency mode included
-            </p>
+      <header className="animate-fade-in border-b border-slate-700/40 bg-slate-950/40 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-3 px-4 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400 via-cyan-400 to-indigo-500 shadow-glow">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-6 w-6"
+                fill="none"
+                stroke="#0b1220"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M8.5 11.5v-6a1.4 1.4 0 0 1 2.8 0v5.5" />
+                <path d="M11.3 11.5V5a1.4 1.4 0 0 1 2.8 0v6.5" />
+                <path d="M14.1 11.5v-5a1.4 1.4 0 0 1 2.8 0v6" />
+                <path d="M8.5 11.5 7 9.2a1.4 1.4 0 0 0-2.4 1.4l1.7 4.4a5.5 5.5 0 0 0 5.2 3.5h1a5.5 5.5 0 0 0 5.5-5.5v-1.5" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="font-display text-[22px] font-bold leading-none tracking-tight text-white">
+                OmniSign
+              </h1>
+              <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-300/80">
+                Everyday Conversation, Signed &amp; Spoken
+              </p>
+            </div>
           </div>
+          <p className="w-full text-xs leading-relaxed text-slate-400 lg:w-auto lg:max-w-md">
+            100% on-device · no video ever leaves your browser · {VOCAB_WORDS.length} conversation
+            signs + A–Z finger-spelling · emergency mode included
+          </p>
           <div className="ml-auto flex flex-wrap items-center gap-2 text-xs">
             <span
-              className={`rounded-full px-2.5 py-1 font-medium ${
+              className={`os-badge ${
                 status === 'ready'
-                  ? 'bg-emerald-500/20 text-emerald-300'
+                  ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30'
                   : status === 'error'
-                    ? 'bg-rose-500/20 text-rose-300'
+                    ? 'bg-rose-500/15 text-rose-300 ring-rose-500/30'
                     : status === 'loading-model'
-                      ? 'bg-amber-500/20 text-amber-300'
-                      : 'bg-slate-700/60 text-slate-300'
+                      ? 'bg-amber-500/15 text-amber-300 ring-amber-500/30'
+                      : 'bg-slate-700/60 text-slate-300 ring-slate-600/50'
               }`}
             >
-              {status === 'ready' ? '● Ready' : status === 'error' ? '● Error' : status === 'loading-model' ? '● Loading…' : '○ Idle'}
+              <span
+                className={`h-1.5 w-1.5 rounded-full bg-current ${
+                  status === 'loading-model' ? 'animate-pulse-dot' : ''
+                }`}
+              />
+              {status === 'ready' ? 'Ready' : status === 'error' ? 'Error' : status === 'loading-model' ? 'Loading…' : 'Idle'}
             </span>
-            <span className="rounded-full bg-slate-700/60 px-2.5 py-1 text-slate-300">
+            <span className="os-badge bg-slate-700/50 text-slate-300 ring-slate-600/50">
               {mode === 'standard' ? 'Standard · 30 FPS' : 'Performance · 15 FPS'}
             </span>
             {modelSource !== 'none' && (
               <span
-                className={`rounded-full px-2.5 py-1 ${
+                className={`os-badge ${
                   modelSource === 'lexisight'
-                    ? 'bg-emerald-500/20 text-emerald-300'
-                    : 'bg-amber-500/20 text-amber-300'
+                    ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30'
+                    : 'bg-amber-500/15 text-amber-300 ring-amber-500/30'
                 }`}
                 title={
                   modelSource === 'lexisight'
@@ -368,8 +395,10 @@ export default function App() {
             )}
             <button
               onClick={() => setEmergencyMode((v) => !v)}
-              className={`rounded-full px-3 py-1 font-semibold ${
-                emergencyMode ? 'bg-rose-600 text-white' : 'bg-slate-700/60 text-slate-300'
+              className={`rounded-full px-3.5 py-1.5 font-semibold transition-all duration-200 hover:-translate-y-px active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300/60 ${
+                emergencyMode
+                  ? 'bg-gradient-to-r from-rose-600 to-rose-500 text-white shadow-lg shadow-rose-950/50 ring-1 ring-rose-400/50'
+                  : 'bg-slate-700/60 text-slate-300 ring-1 ring-inset ring-slate-600/60 hover:bg-slate-700 hover:text-white'
               }`}
               aria-pressed={emergencyMode}
             >
@@ -381,13 +410,13 @@ export default function App() {
 
       <main className="mx-auto grid max-w-7xl gap-4 p-4 sm:p-6 lg:grid-cols-[1fr_340px_1fr]">
         {/* ============ LEFT: Sign-to-Speech ============ */}
-        <section className="rounded-2xl border border-slate-800 bg-panel p-4">
+        <section className="os-panel animate-fade-up p-4 sm:p-5">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-semibold">Sign → Speech</h2>
-            <span className="text-xs text-slate-400">MediaPipe Holistic · TF.js · 30×225</span>
+            <h2 className="font-display text-base font-semibold text-slate-100">Sign → Speech</h2>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">MediaPipe Holistic · TF.js · 30×225</span>
           </div>
 
-          <div className="relative aspect-video overflow-hidden rounded-xl bg-black">
+          <div className="relative aspect-video overflow-hidden rounded-xl bg-black ring-1 ring-slate-700/50 shadow-panel">
             <video ref={videoRef} className="absolute inset-0 h-full w-full object-cover" muted playsInline />
             <canvas ref={canvasRef} width={640} height={480} className="absolute inset-0 h-full w-full" />
             {!cameraOn && (
@@ -397,7 +426,7 @@ export default function App() {
               </div>
             )}
             {cameraOn && (
-              <span className="absolute left-2 top-2 rounded bg-black/60 px-2 py-0.5 text-xs text-emerald-300">
+              <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2.5 py-1 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-500/30 backdrop-blur">
                 ● LIVE · {fps} FPS
               </span>
             )}
@@ -405,24 +434,24 @@ export default function App() {
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {cameraOn ? (
-              <button onClick={stopCamera} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-medium hover:bg-rose-500">
+              <button onClick={stopCamera} className="os-btn-danger">
                 Stop camera
               </button>
             ) : (
-              <button onClick={startCamera} className="rounded-lg bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 hover:bg-cyan-400">
+              <button onClick={startCamera} className="os-btn-primary">
                 Start camera
               </button>
             )}
-            <div className="flex items-center rounded-lg border border-slate-700 text-sm">
+            <div className="os-seg">
               <button
                 onClick={() => setMode('standard')}
-                className={`rounded-l-lg px-3 py-2 ${mode === 'standard' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-300'}`}
+                className={`os-seg-btn rounded-l-lg ${mode === 'standard' ? 'os-seg-btn-active' : ''}`}
               >
                 Standard · 30 FPS
               </button>
               <button
                 onClick={() => setMode('performance')}
-                className={`rounded-r-lg px-3 py-2 ${mode === 'performance' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-300'}`}
+                className={`os-seg-btn rounded-r-lg ${mode === 'performance' ? 'os-seg-btn-active' : ''}`}
               >
                 Performance · 15 FPS
               </button>
@@ -430,8 +459,8 @@ export default function App() {
           </div>
 
           {/* Demo mode */}
-          <div className="mt-3 rounded-xl border border-slate-700/80 bg-slate-900/60 p-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <div className="os-panel-soft mt-3 p-3">
+            <p className="os-eyebrow mb-2">
               Demo mode — no webcam needed · simulated landmarks · procedural demo model
             </p>
             <p className="mb-2 text-[11px] text-slate-500">
@@ -442,7 +471,7 @@ export default function App() {
               <select
                 value={simWord}
                 onChange={(e) => setSimWord(e.target.value)}
-                className="max-w-[220px] rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm"
+                className="os-select"
                 aria-label="Sign to simulate"
               >
                 {vocabOptions.map((s) => (
@@ -451,7 +480,7 @@ export default function App() {
               </select>
               <button
                 onClick={simulateSign}
-                className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-500"
+                className="os-btn-primary"
               >
                 ▶ Simulate Sign
               </button>
@@ -460,12 +489,12 @@ export default function App() {
 
           {/* Detection readout */}
           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-xl bg-slate-900/70 p-3">
-              <p className="text-[11px] uppercase tracking-wide text-slate-400">Detected sign</p>
-              <p className="truncate text-lg font-bold text-cyan-300">{detected ? displayWord(detected.word) : '—'}</p>
+            <div className="rounded-xl border border-slate-700/40 bg-slate-900/60 p-3 transition-colors duration-200">
+              <p className="os-eyebrow">Detected sign</p>
+              <p className="truncate text-lg font-bold text-sky-300">{detected ? displayWord(detected.word) : '—'}</p>
             </div>
-            <div className="rounded-xl bg-slate-900/70 p-3">
-              <p className="text-[11px] uppercase tracking-wide text-slate-400">Confidence</p>
+            <div className="rounded-xl border border-slate-700/40 bg-slate-900/60 p-3 transition-colors duration-200">
+              <p className="os-eyebrow">Confidence</p>
               <p className="text-lg font-bold">
                 {detected ? `${(detected.confidence * 100).toFixed(1)}%` : '—'}
               </p>
@@ -473,8 +502,8 @@ export default function App() {
                 <p className="text-[10px] text-amber-300">below 85% — not spoken</p>
               )}
             </div>
-            <div className="rounded-xl bg-slate-900/70 p-3">
-              <p className="text-[11px] uppercase tracking-wide text-slate-400">Inference latency</p>
+            <div className="rounded-xl border border-slate-700/40 bg-slate-900/60 p-3 transition-colors duration-200">
+              <p className="os-eyebrow">Inference latency</p>
               <p className="text-lg font-bold">{detected ? `${detected.latencyMs.toFixed(1)} ms` : '—'}</p>
             </div>
           </div>
@@ -482,7 +511,7 @@ export default function App() {
           {detected?.top3 && (
             <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
               {detected.top3.map((t) => (
-                <span key={t.word} className="rounded-full bg-slate-800 px-2 py-0.5 text-slate-300">
+                <span key={t.word} className="os-top3-chip">
                   {displayWord(t.word)} {(t.confidence * 100).toFixed(1)}%
                 </span>
               ))}
@@ -490,7 +519,7 @@ export default function App() {
           )}
 
           {committed && (
-            <p className="mt-3 rounded-lg bg-emerald-500/15 px-3 py-2 text-sm text-emerald-300">
+            <p className="mt-3 animate-turn-in rounded-lg bg-emerald-500/15 px-3 py-2 text-sm text-emerald-300 ring-1 ring-inset ring-emerald-500/30">
               🔊 Spoken: <strong>{displayWord(committed)}</strong>
             </p>
           )}
@@ -503,9 +532,9 @@ export default function App() {
         </section>
 
         {/* ============ MIDDLE: Conversation transcript ============ */}
-        <section className="flex flex-col rounded-2xl border border-slate-800 bg-panel p-4">
-          <h2 className="mb-3 text-base font-semibold">Conversation</h2>
-          <div className="min-h-[320px] flex-1 space-y-2 overflow-y-auto rounded-xl bg-slate-900/60 p-3">
+        <section className="os-panel flex animate-fade-up flex-col p-4 sm:p-5" style={{ animationDelay: '70ms' }}>
+          <h2 className="mb-3 font-display text-base font-semibold text-slate-100">Conversation</h2>
+          <div className="min-h-[320px] flex-1 space-y-2 overflow-y-auto rounded-xl border border-slate-700/40 bg-slate-950/50 p-3">
             {turns.length === 0 ? (
               <p className="text-sm text-slate-500">
                 Nothing yet. Sign in front of the camera, simulate a sign, or type/speak a reply —
@@ -515,10 +544,10 @@ export default function App() {
               turns.map((t, i) => (
                 <div
                   key={i}
-                  className={`max-w-[90%] rounded-xl px-3 py-2 text-sm ${
+                  className={`max-w-[90%] animate-turn-in rounded-xl px-3 py-2 text-sm shadow-sm ${
                     t.from === 'sign'
-                      ? 'ml-auto bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500/30'
-                      : 'bg-slate-800 text-slate-200'
+                      ? 'ml-auto bg-gradient-to-br from-sky-500/25 to-cyan-500/15 text-cyan-100 ring-1 ring-cyan-400/30'
+                      : 'bg-slate-800/90 text-slate-200 ring-1 ring-inset ring-slate-700/60'
                   }`}
                 >
                   <p className="mb-0.5 text-[10px] uppercase tracking-wide opacity-60">
@@ -532,7 +561,7 @@ export default function App() {
           </div>
 
           {emergencyMode && (
-            <div className="mt-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3">
+            <div className="mt-3 animate-fade-in rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 shadow-lg shadow-rose-950/30">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-rose-300">
                 Emergency quick signs — tap to sign
               </p>
@@ -541,7 +570,7 @@ export default function App() {
                   <button
                     key={w}
                     onClick={() => signEmergencyWord(w)}
-                    className="rounded-full bg-rose-600/80 px-2.5 py-1 text-xs font-medium text-white hover:bg-rose-500"
+                    className="rounded-full bg-rose-600/80 px-2.5 py-1 text-xs font-medium text-white transition-all duration-150 hover:-translate-y-px hover:bg-rose-500 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300/60"
                   >
                     {displayWord(w)}
                   </button>
@@ -551,36 +580,36 @@ export default function App() {
           )}
           <button
             onClick={() => setTurns([])}
-            className="mt-3 self-start rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-800"
+            className="mt-3 self-start rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-400 transition-all duration-200 hover:-translate-y-px hover:bg-slate-800 hover:text-slate-200 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/50"
           >
             Clear conversation
           </button>
         </section>
 
         {/* ============ RIGHT: Speech-to-Sign ============ */}
-        <section className="rounded-2xl border border-slate-800 bg-panel p-4">
+        <section className="os-panel animate-fade-up p-4 sm:p-5" style={{ animationDelay: '140ms' }}>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-semibold">Speech → Sign</h2>
-            <span className="text-xs text-slate-400">Rigged 3D hands · 60 FPS</span>
+            <h2 className="font-display text-base font-semibold text-slate-100">Speech → Sign</h2>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Rigged 3D hands · 60 FPS</span>
           </div>
 
           {/* Mic-first: tap the big mic and speak — the hands sign it live. */}
-          <div className="mb-3 flex items-center gap-3 rounded-xl border border-slate-700/80 bg-slate-900/60 p-3">
+          <div className="os-panel-soft mb-3 flex items-center gap-3 bg-gradient-to-br from-slate-900/70 to-slate-900/40 p-3">
             <button
               onClick={toggleListening}
               disabled={!speechSupported}
               aria-label={listening ? 'Stop listening' : 'Tap to speak'}
               aria-pressed={listening}
-              className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-2xl shadow-lg transition ${
+              className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-2xl transition-all duration-200 hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60 disabled:cursor-not-allowed disabled:opacity-40 ${
                 listening
-                  ? 'animate-pulse bg-rose-600 text-white ring-4 ring-rose-500/40'
-                  : 'bg-cyan-500 text-slate-950 ring-4 ring-cyan-500/20 hover:bg-cyan-400'
-              } disabled:cursor-not-allowed disabled:opacity-40`}
+                  ? 'animate-mic-ring bg-gradient-to-br from-rose-500 to-rose-600 text-white shadow-lg shadow-rose-950/50'
+                  : 'bg-gradient-to-br from-sky-400 to-cyan-400 text-slate-950 shadow-glow ring-4 ring-cyan-400/20 hover:brightness-110'
+              }`}
             >
               🎙️
             </button>
             <div className="min-w-0">
-              <p className="text-sm font-semibold">
+              <p className="font-display text-sm font-semibold text-slate-100">
                 {listening ? 'Listening… tap the mic to stop' : 'Tap the mic and speak'}
               </p>
               <p className="truncate text-xs text-slate-400">
@@ -594,23 +623,23 @@ export default function App() {
             </div>
           </div>
 
-          <div className="aspect-video overflow-hidden rounded-xl bg-gradient-to-b from-slate-800 to-slate-900">
+          <div className="aspect-video overflow-hidden rounded-xl bg-gradient-to-b from-slate-800 to-slate-900 ring-1 ring-slate-700/50 shadow-panel">
             {avatar3d ? (
               <HandAvatar tokens={glossTokens} replayKey={replayKey} />
             ) : (
               <SkeletonView tokens={glossTokens} replayKey={replayKey} />
             )}
           </div>
-          <div className="mt-2 flex items-center rounded-lg border border-slate-700 text-xs">
+          <div className="os-seg mt-2 text-xs">
             <button
               onClick={() => setAvatar3d(true)}
-              className={`flex-1 rounded-l-lg px-3 py-1.5 ${avatar3d ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-300'}`}
+              className={`os-seg-btn flex-1 rounded-l-lg ${avatar3d ? 'os-seg-btn-active' : ''}`}
             >
               3D hands
             </button>
             <button
               onClick={() => setAvatar3d(false)}
-              className={`flex-1 rounded-r-lg px-3 py-1.5 ${!avatar3d ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-300'}`}
+              className={`os-seg-btn flex-1 rounded-r-lg ${!avatar3d ? 'os-seg-btn-active' : ''}`}
             >
               Skeleton view
             </button>
@@ -619,7 +648,7 @@ export default function App() {
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               onClick={() => glossTokens.length > 0 && setReplayKey((k) => k + 1)}
-              className="rounded-lg border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800"
+              className="os-btn-ghost"
             >
               ↻ Replay
             </button>
@@ -641,22 +670,22 @@ export default function App() {
               value={speechText}
               onChange={(e) => setSpeechText(e.target.value)}
               placeholder='Type something — try "Hello, how are you today?"'
-              className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm outline-none focus:border-cyan-400"
+              className="os-input"
               aria-label="Text to sign"
             />
-            <button type="submit" className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-cyan-400">
+            <button type="submit" className="os-btn-primary">
               Sign it
             </button>
           </form>
 
           <div className="mt-3">
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Gloss tokens</p>
+            <p className="os-eyebrow mb-1.5">Gloss tokens</p>
             {glossTokens.length === 0 ? (
               <p className="text-sm text-slate-500">No gloss yet — speak or type above.</p>
             ) : (
               <div className="flex flex-wrap gap-1.5">
                 {glossTokens.map((t, i) => (
-                  <span key={`${t}-${i}`} className="rounded-full bg-cyan-500/15 px-3 py-1 text-sm font-semibold text-cyan-300 ring-1 ring-cyan-500/40">
+                  <span key={`${t}-${i}-${replayKey}`} className="os-gloss-pill">
                     {t}
                   </span>
                 ))}
@@ -671,7 +700,7 @@ export default function App() {
         </section>
       </main>
 
-      <footer className="mx-auto max-w-7xl px-6 pb-6 text-center text-[11px] text-slate-500">
+      <footer className="mx-auto max-w-7xl border-t border-slate-800/60 px-6 pb-8 pt-5 text-center text-[11px] leading-relaxed text-slate-500">
         OmniSign v2 — everyday conversation first, emergency mode as a feature · MediaPipe Holistic
         (33 pose + 2×21 hand landmarks) · TF.js · LexiSight hands-only 126-dim model (30×225 capture) · Pose lexicon avatar ·
         All processing happens on your device. Live camera recognition uses the real LexiSight

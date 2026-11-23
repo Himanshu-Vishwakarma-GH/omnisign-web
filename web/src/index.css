@@ -10,6 +10,102 @@ body,
 
 body {
   margin: 0;
-  background: #0b1220;
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Layered blue-grey professional theme: deep slate base with soft
+     sky/indigo glows top-left and top-right, fading into the base. */
+  background:
+    radial-gradient(900px 520px at 12% -10%, rgba(56, 189, 248, 0.13), transparent 60%),
+    radial-gradient(820px 520px at 92% -6%, rgba(99, 102, 241, 0.12), transparent 60%),
+    linear-gradient(180deg, #0a0f1c 0%, #0b1220 55%, #090e1a 100%);
+  background-attachment: fixed;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(56, 189, 248, 0.35);
+  color: #f0f9ff;
+}
+
+/* Slim, theme-matched scrollbars (transcript panel). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.55) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.55);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@layer components {
+  /* ---- Shared surfaces ---- */
+  .os-panel {
+    @apply rounded-2xl border border-slate-700/40 bg-gradient-to-b from-slate-900/80 to-slate-900/50 shadow-panel backdrop-blur;
+  }
+  .os-panel-soft {
+    @apply rounded-xl border border-slate-700/60 bg-slate-900/60;
+  }
+  .os-eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400;
+  }
+
+  /* ---- Buttons (one accent: sky -> cyan gradient) ---- */
+  .os-btn-primary {
+    @apply rounded-lg bg-gradient-to-r from-sky-500 to-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 shadow-glow transition-all duration-200 hover:-translate-y-px hover:brightness-110 active:translate-y-0 active:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60;
+  }
+  .os-btn-ghost {
+    @apply rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2 text-sm font-medium text-slate-200 transition-all duration-200 hover:-translate-y-px hover:bg-slate-800 hover:text-white active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/50;
+  }
+  .os-btn-danger {
+    @apply rounded-lg bg-rose-600 px-3 py-2 text-sm font-medium text-white transition-all duration-200 hover:-translate-y-px hover:bg-rose-500 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300/60;
+  }
+
+  /* ---- Form controls ---- */
+  .os-input {
+    @apply min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-400 focus:ring-2 focus:ring-sky-400/30;
+  }
+  .os-select {
+    @apply max-w-[220px] rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/30;
+  }
+
+  /* ---- Segmented toggles (FPS / 3D hands) ---- */
+  .os-seg {
+    @apply flex items-center rounded-lg border border-slate-700 bg-slate-800/50 text-sm;
+  }
+  .os-seg-btn {
+    @apply px-3 py-2 text-slate-300 transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-300/50;
+  }
+  .os-seg-btn-active {
+    @apply bg-sky-400/15 text-sky-300;
+  }
+
+  /* ---- Badges & pills ---- */
+  .os-badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset;
+  }
+  .os-gloss-pill {
+    @apply animate-pill-in rounded-full bg-cyan-500/15 px-3 py-1 text-sm font-semibold text-cyan-300 ring-1 ring-cyan-500/40;
+  }
+  .os-top3-chip {
+    @apply rounded-full bg-slate-800 px-2 py-0.5 text-slate-300 transition-colors duration-150 hover:bg-slate-700 hover:text-slate-100;
+  }
+}
+
+/* Respect users who prefer no motion: entrance/pulse animations collapse
+   to their end state instead of animating. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

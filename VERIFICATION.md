@@ -605,3 +605,134 @@ hierarchy in Python (FBX2glTF export, so the Armature node carries a
   unverified, as before (§9.7/§10.4).
 - DevTools console not read in this task; "zero console errors" is
   not claimed.
+
+## 12. UI rebrand — blue-grey gradient professional theme (2026-11-23)
+
+User is about to share the live link with friends for testing/feedback, so
+the UI was rebranded for a polished, professional first impression.
+**Styling only: zero functionality changes.** Every feature, handler,
+layout position and user-facing string is unchanged except the header
+wordmark presentation (same words, new hierarchy). No new dependencies,
+no new runtime network calls except the Google Fonts stylesheet.
+
+### 12.1 Palette — blue-grey gradient, dark professional
+
+- Base: deep slate `#0a0f1c` → `#0b1220` vertical gradient on `body`,
+  with two soft radial glows — sky at top-left, indigo at top-right
+  (fixed background, `background-attachment: fixed`).
+- Panels: `os-panel` — gradient `slate-900/80 → slate-900/50`,
+  `slate-700/40` border, `shadow-panel` (0 12px 32px −14px black/75),
+  backdrop blur. Inner boxes: `os-panel-soft` (`slate-900/60`,
+  `slate-700/60` border).
+- ONE accent family: sky → cyan gradient (`from-sky-500 to-cyan-400`
+  / `from-sky-400 to-cyan-400`) for all primary actions (Start camera,
+  Simulate Sign — previously violet — Sign it, mic idle state) plus a
+  soft `shadow-glow`. Secondary actions are slate ghost buttons.
+- Semantic colours kept: emerald = ready/spoken, amber =
+  loading/warning, rose/red = error and **Emergency mode only**
+  (emergency button, chips and box stay red — red still means
+  emergency; nothing emergency was recoloured blue). Status badges are
+  now `os-badge` pills with a real pulsing dot span (loading) instead
+  of the ●/○ text glyphs.
+- Text contrast: slate-100/200 body on the dark gradient panels,
+  slate-400/500 for captions — same contrast levels as before, on
+  slightly lighter panel surfaces.
+
+### 12.2 Typography — Inter + Sora
+
+- Google Fonts `<link>` in `web/index.html` (preconnect + `display=swap`):
+  **Inter 400/500/600/700** for UI text, **Sora 600/700/800** for the
+  wordmark and panel titles (`font-display`). System-font fallbacks
+  (`ui-sans-serif, system-ui…`) so the app still renders offline if
+  the font stylesheet fails.
+- Type scale: wordmark Sora 22px bold tight; tagline 11px semibold,
+  uppercase, 0.18em tracking, sky-300/80; panel titles Sora 16px
+  semibold; eyebrow labels (`os-eyebrow`) 11px semibold, uppercase,
+  0.14em tracking, slate-400; body 14px; captions 11–12px.
+- Tailwind config: `fontFamily.sans` (Inter first) and
+  `fontFamily.display` (Sora first) added; `ink` kept at `#0a0f1c`.
+
+### 12.3 Wordmark — inline SVG hand motif (no emoji, no external image)
+
+Header now shows a 44px rounded tile with a sky→cyan→indigo gradient
+and a minimal hand glyph drawn inline as SVG (three raised fingers +
+thumb + palm curve, dark slate stroke on the gradient tile), next to
+"OmniSign" (Sora bold) and the tagline "Everyday Conversation, Signed
+& Spoken" (same words as before, now an uppercase eyebrow under the
+wordmark). The meta line (100% on-device · … · emergency mode
+included) is unchanged in wording, now sitting beside the wordmark
+block. Header has a translucent `bg-slate-950/40 backdrop-blur`
+treatment with a `slate-700/40` bottom border.
+
+### 12.4 What changed per panel (classNames only)
+
+- **Header:** wordmark SVG + Sora wordmark/tagline; status badges are
+  `os-badge` pills with dot indicators; FPS badge restyled; emergency
+  button keeps rose but gains a gradient + ring when ON, hover lift.
+- **Sign → Speech:** `os-panel` with staggered entrance; video area
+  gains `ring-1 ring-slate-700/50 shadow-panel`; LIVE badge is a
+  pill with backdrop blur; Start camera → `os-btn-primary`, Stop →
+  `os-btn-danger`; FPS toggle → `os-seg` segmented control;
+  Simulate Sign → `os-btn-primary` (was violet-600); demo box →
+  `os-panel-soft`; word select → `os-select`; readout cards gain
+  borders and `os-eyebrow` labels, detected word now sky-300; top-3
+  chips → `os-top3-chip` with hover; "Spoken" banner gains a ring
+  and `animate-turn-in`.
+- **Conversation:** `os-panel` with staggered entrance; transcript
+  well is `slate-950/50` with a border; turn bubbles animate in
+  (`animate-turn-in`), sign bubbles use a sky→cyan gradient tint,
+  speech bubbles gain an inset ring; emergency box keeps rose and
+  gains a fade-in + shadow, chips gain hover lift + focus ring;
+  Clear button gains hover lift + focus ring.
+- **Speech → Sign:** `os-panel` with staggered entrance; mic
+  container is a gradient `os-panel-soft`; mic button idle is a
+  sky→cyan gradient with glow ring, listening uses the custom
+  `animate-mic-ring` expanding ring (rose) instead of the generic
+  `animate-pulse`; mic label is Sora semibold; avatar area gains
+  `ring-1 ring-slate-700/50 shadow-panel`; 3D/Skeleton toggle →
+  `os-seg`; Replay → `os-btn-ghost`; text input → `os-input`;
+  "Sign it" → `os-btn-primary`; gloss pills → `os-gloss-pill`
+  (pop-in animation, key now includes `replayKey` so Replay
+  re-animates them).
+- **Footer:** gains a top border and extra padding; **wording
+  unchanged, verified in the built bundle** — LexiSight footer text
+  and the J-Toastie CC-BY credit line are both present verbatim.
+- **Deliberately unchanged:** all handlers, state, thresholds,
+  layouts/positions, every user-facing string (except the wordmark
+  hierarchy), models, lexicon, recogniser, avatar logic, emergency
+  red. `Avatar.tsx` / `HandAvatar.tsx` / `SkeletonView.tsx` untouched.
+  README.md not changed — it does not describe the old look.
+
+### 12.5 Motion design (transform/opacity only, 60 FPS target)
+
+- Keyframes in `tailwind.config.js`: `fade-up` (panels, 0.5s,
+  staggered 0/70/140ms), `fade-in` (header, emergency box),
+  `turn-in` (transcript turns, spoken banner), `pill-in` (gloss
+  pills), `mic-ring` (listening mic, 1.4s expanding ring),
+  `pulse-dot` (loading status dot). All `cubic-bezier(0.22,1,0.36,1)`
+  easings; hover states use `hover:-translate-y-px` +
+  `active:translate-y-0` with 150–200ms transitions; focus states
+  use `focus-visible` sky rings. No layout-affecting animation.
+- `prefers-reduced-motion: reduce` in `index.css` collapses all
+  animations/transitions to 0.01ms (verified present in built CSS).
+- Also in `index.css`: themed `::selection` (sky/35), slim
+  slate scrollbars, `-webkit-font-smoothing`.
+
+### 12.6 Verification
+
+- **Tests: 39/39 pass** (unchanged — no test files touched).
+- **Build: `npm run build` passes** (tsc + vite). CSS grew
+  12.65 kB → 32.85 kB (new utilities/animations/keyframes); main JS
+  unchanged at 2,438.79 kB. One pre-existing benign Vite warning
+  about `motionGen.mjs` dynamic/static import (unchanged).
+- **Preview smoke test** (`vite preview --port 4178`): app root 200
+  (939 B HTML, contains the Google Fonts link and "OmniSign"),
+  `models/hand.glb` 200, 91,424 B exact.
+- **Built-bundle grep checks:** built CSS contains `fade-up`,
+  `mic-ring`, `os-panel`, `font-display`, `pill-in`, `turn-in` and
+  `prefers-reduced-motion`; built JS contains the J-Toastie credit
+  and the LexiSight footer text verbatim.
+- **NOT verified:** no live-browser visual check of the rebrand was
+  run in this task (parent handles browser verification) — the
+  gradient, fonts, wordmark rendering and entrance animations have
+  not been seen rendering in a browser yet.
