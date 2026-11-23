@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
-import { defaultPoses, type AvatarPose } from '../lib/poses'
+import { loadLexicon, restFrame, type Lexicon } from '../lib/lexicon'
 
 interface AvatarProps {
   /** Gloss tokens currently being signed, e.g. ["YOUR","NAME","WHAT"]. */
@@ -9,12 +9,16 @@ interface AvatarProps {
   replayKey: number
 }
 
-const POSE_HOLD_MS = 900
+const FRAME_MS = 1000 / 12 // 12 fps playback of lexicon frames
 
 /**
- * Procedural Three.js upper-body avatar.
- * No external assets: head, torso, arms and hands are built from spheres,
- * capsules and boxes. Poses are interpolated with quaternion SLERP at
+ * Procedural Three.js upper-body avatar, RETARGETED from the same 225-dim
+ * lexicon frames as the 2D skeleton view (Pipeline B, layer 2).
+ *
+ * Retargeting: shoulder/elbow quaternions are derived from the pose
+ * landmarks (shoulder -> elbow -> wrist vectors); hand openness from the
+ * finger-tip-to-wrist distance in the hand landmarks; head yaw/pitch from
+ * the nose/ear landmarks. Poses are smoothed with quaternion SLERP at
  * requestAnimationFrame speed (~60 FPS).
  */
 export default function Avatar({ tokens, replayKey }: AvatarProps) {
@@ -58,18 +62,18 @@ export default function Avatar({ tokens, replayKey }: AvatarProps) {
     const root = new THREE.Group()
     scene.add(root)
 
-    // Torso
     const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.26, 0.42, 8, 16), shirt)
     torso.position.y = -0.28
     root.add(torso)
-    // Head
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 32, 32), skin)
     head.position.y = 0.42
     root.add(head)
-    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.175, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.55), dark)
+    const hair = new THREE.Mesh(
+      new THREE.SphereGeometry(0.175, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.55),
+      dark,
+    )
     hair.position.y = 0.45
     root.add(hair)
-    // Eyes
     for (const sx of [-0.06, 0.06]) {
       const eye = new THREE.Mesh(new THREE.SphereGeometry(0.018, 12, 12), dark)
       eye.position.set(sx, 0.44, 0.155)
@@ -118,89 +122,100 @@ export default function Avatar({ tokens, replayKey }: AvatarProps) {
     const leftArm = buildArm(-1)
     const rightArm = buildArm(1)
 
-    // --- pose state -------------------------------------------------------
-    let poses: Record<string, AvatarPose> = defaultPoses()
-    fetch(`${import.meta.env.BASE_URL}poses.json`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (j) poses = j
-      })
-      .catch(() => undefined) // fallback poses already in place
+    let lexicon: Lexicon | null = null
+    let cancelled = false
+    void loadLexicon().then((lx) => {
+      if (!cancelled) lexicon = lx
+    })
 
-    const neutral: AvatarPose = {
-      left: { shoulder: [0.1, 0, 0.15], elbow: 0.35, hand: 0.6 },
-      right: { shoulder: [0.1, 0, -0.15], elbow: 0.35, hand: 0.6 },
-      head: [0, 0, 0],
-    }
-    let current: AvatarPose = JSON.parse(JSON.stringify(neutral))
-    let target: AvatarPose = neutral
-    let tokenQueue: string[] = []
-    let poseStart = 0
-    let lastReplay = replayKey
+    let frames: Float32Array[] = [restFrame()]
+    let frameIdx = 0
     let lastTokens: string[] = []
+    let lastReplay = replayKey
+    let lastTick = performance.now()
 
-    const slerpQuat = (a: THREE.Quaternion, b: THREE.Quaternion, t: number) =>
-      a.clone().slerp(b, t)
+    const v = (frame: Float32Array, landmark: number): THREE.Vector3 =>
+      new THREE.Vector3(
+        (frame[landmark * 3] - 0.5) * 2.2,
+        (0.5 - frame[landmark * 3 + 1]) * 2.2,
+        frame[landmark * 3 + 2] * 2,
+      )
 
-    function applyPose(pose: AvatarPose) {
-      const setArm = (rig: ArmRig, p: AvatarPose['left'], mirror: boolean) => {
-        const q = new THREE.Quaternion().setFromEuler(
-          new THREE.Euler(p.shoulder[0], p.shoulder[1], mirror ? -p.shoulder[2] : p.shoulder[2]),
-        )
-        rig.shoulder.quaternion.copy(slerpQuat(rig.shoulder.quaternion, q, 0.18))
-        const eq = new THREE.Quaternion().setFromEuler(new THREE.Euler(-p.elbow, 0, 0))
-        rig.elbow.quaternion.copy(slerpQuat(rig.elbow.quaternion, eq, 0.18))
-        const open = p.hand
+    /** Hand openness 0 (fist) .. 1 (open) from fingertip spread. */
+    const handOpenness = (frame: Float32Array, handOffset: number): number => {
+      const wrist = v(frame, handOffset)
+      let spread = 0
+      for (const tip of [8, 12, 16, 20]) {
+        spread += v(frame, handOffset + tip).distanceTo(wrist)
+      }
+      // Rest-open spread is ~0.55 in avatar units; fist is ~0.25.
+      return Math.min(1, Math.max(0, (spread - 0.25) / 0.3))
+    }
+
+    /** Target shoulder/elbow quaternions for one arm from pose landmarks. */
+    function armTargets(
+      frame: Float32Array,
+      shoulderIdx: number,
+      elbowIdx: number,
+      wristIdx: number,
+    ): { shoulder: THREE.Quaternion; elbow: THREE.Quaternion } {
+      const shoulder = v(frame, shoulderIdx)
+      const elbow = v(frame, elbowIdx)
+      const wrist = v(frame, wristIdx)
+      const upper = elbow.clone().sub(shoulder).normalize()
+      const fore = wrist.clone().sub(elbow).normalize()
+      const down = new THREE.Vector3(0, -1, 0)
+      const shoulderQ = new THREE.Quaternion().setFromUnitVectors(down, upper)
+      const elbowQ = new THREE.Quaternion().setFromUnitVectors(upper, fore)
+      return { shoulder: shoulderQ, elbow: elbowQ }
+    }
+
+    let raf = 0
+    const tick = (now: number) => {
+      raf = requestAnimationFrame(tick)
+      if (tokensRef.current !== lastTokens || replayRef.current !== lastReplay) {
+        lastTokens = tokensRef.current
+        lastReplay = replayRef.current
+        if (lexicon && tokensRef.current.length > 0) {
+          frames = lexicon.framesForTokens(tokensRef.current).frames
+        } else {
+          frames = [restFrame()]
+        }
+        frameIdx = 0
+        lastTick = now
+      }
+      if (now - lastTick >= FRAME_MS && frames.length > 1) {
+        frameIdx = (frameIdx + 1) % frames.length
+        lastTick = now
+      }
+      const frame = frames[Math.min(frameIdx, frames.length - 1)]
+      // Retarget both arms.
+      const left = armTargets(frame, 11, 13, 15)
+      const right = armTargets(frame, 12, 14, 16)
+      leftArm.shoulder.quaternion.slerp(left.shoulder, 0.25)
+      leftArm.elbow.quaternion.slerp(left.elbow, 0.25)
+      rightArm.shoulder.quaternion.slerp(right.shoulder, 0.25)
+      rightArm.elbow.quaternion.slerp(right.elbow, 0.25)
+      // Fingers: curl from openness (hand offsets 33 = left, 54 = right).
+      const openL = handOpenness(frame, 33)
+      const openR = handOpenness(frame, 54)
+      const curlArm = (rig: ArmRig, open: number) => {
         rig.fingers.forEach((f, i) => {
           f.rotation.x = (1 - open) * (i === 4 ? 0.5 : 1.1)
         })
       }
-      setArm(leftArm, pose.left, true)
-      setArm(rightArm, pose.right, false)
-      const hq = new THREE.Quaternion().setFromEuler(
-        new THREE.Euler(pose.head[0], pose.head[1], pose.head[2]),
+      curlArm(leftArm, openL)
+      curlArm(rightArm, openR)
+      // Head: yaw from nose/ear x, pitch from nose y.
+      const noseX = frame[0]
+      const noseY = frame[1]
+      const headQ = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler((noseY - 0.155) * 2, (noseX - 0.5) * -2.5, 0),
       )
-      head.quaternion.copy(slerpQuat(head.quaternion, hq, 0.12))
-    }
-
-    function poseFor(token: string): AvatarPose {
-      if (poses[token]) return poses[token]
-      // Unknown word -> finger-spell it letter by letter.
-      return poses[token[0]] ?? neutral
-    }
-
-    function expandTokens(list: string[]): string[] {
-      const out: string[] = []
-      for (const t of list) {
-        if (poses[t]) out.push(t)
-        else for (const ch of t) out.push(ch)
-      }
-      return out
-    }
-
-    let raf = 0
-    let last = performance.now()
-    const tick = (now: number) => {
-      raf = requestAnimationFrame(tick)
-      // Pick up a new token list (or replay) when it changes.
-      if (tokensRef.current !== lastTokens || replayRef.current !== lastReplay) {
-        lastReplay = replayRef.current
-        lastTokens = tokensRef.current
-        tokenQueue = expandTokens(tokensRef.current)
-        poseStart = now
-        target = tokenQueue.length > 0 ? poseFor(tokenQueue[0]) : neutral
-      }
-      const elapsed = now - poseStart
-      if (tokenQueue.length > 0 && elapsed > POSE_HOLD_MS) {
-        tokenQueue = tokenQueue.slice(1)
-        poseStart = now
-        target = tokenQueue.length > 0 ? poseFor(tokenQueue[0]) : neutral
-      }
-      applyPose(target)
+      head.quaternion.slerp(headQ, 0.12)
       // Gentle idle breathing so the avatar never looks frozen.
       root.position.y = Math.sin(now / 900) * 0.008
       renderer.render(scene, camera)
-      last = now
     }
     raf = requestAnimationFrame(tick)
 
@@ -214,6 +229,7 @@ export default function Avatar({ tokens, replayKey }: AvatarProps) {
     window.addEventListener('resize', onResize)
 
     return () => {
+      cancelled = true
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', onResize)
       renderer.dispose()

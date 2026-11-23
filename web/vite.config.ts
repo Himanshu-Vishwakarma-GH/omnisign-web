@@ -6,10 +6,6 @@ export default defineConfig({
   base: '/omnisign-web/',
   plugins: [react()],
   build: {
-    // onnxruntime-web ships large wasm assets; keep chunk warnings quiet.
     chunkSizeWarningLimit: 2000,
-  },
-  optimizeDeps: {
-    exclude: ['onnxruntime-web'],
   },
 })

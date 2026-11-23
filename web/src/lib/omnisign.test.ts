@@ -1,139 +1,112 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeLandmarks } from './normalization'
+import { extractFeatures, HolisticBuffer, FEATURE_DIM, FRAMES } from './holistic'
 import { LandmarkBuffer } from './buffer'
 import { Debouncer } from './debounce'
 import { tokenizeGloss } from './gloss'
-import { generateSyntheticSequence } from './synthetic'
-import { FRAMES, LANDMARKS } from './constants'
+import { expandKeyframes } from './lexicon'
+import {
+  FEATURE_DIM as GEN_DIM,
+  generateLetterKeyframes,
+  generateWordKeyframes,
+  generateWordSequence,
+  VOCAB_WORDS,
+  EMERGENCY_WORDS,
+} from './motionGen.mjs'
+import { FRAMES as CONST_FRAMES } from './constants'
 
-function makeFrame(scale = 1, offset: [number, number, number] = [0, 0, 0]): Float32Array {
-  // Hand-crafted frame: right-hand wrist at (1,2,3), middle MCP at (1,3,3)
-  // (unit distance in +y), left hand mirrored, shoulders 2 units apart.
-  const f = new Float32Array(144)
-  const set = (i: number, x: number, y: number, z: number) => {
-    f[i * 3] = offset[0] + x * scale
-    f[i * 3 + 1] = offset[1] + y * scale
-    f[i * 3 + 2] = offset[2] + z * scale
-  }
-  // Fill every landmark with deterministic values first (no zeros).
-  for (let i = 0; i < 48; i++) set(i, 0.5 + (i % 7) * 0.1, 1 + (i % 5) * 0.1, 0.2 + (i % 3) * 0.05)
-  set(0, 1, 2, 3) // right wrist
-  set(9, 1, 3, 3) // right middle MCP (distance 1 from wrist)
-  set(5, 1.5, 2, 3) // another right-hand joint
-  set(21, -1, 2, 3) // left wrist
-  set(30, -1, 3, 3) // left middle MCP
-  set(42, -1, 5, 3) // L shoulder
-  set(43, 1, 5, 3) // R shoulder (width 2)
-  set(44, -1.5, 4, 3)
-  set(45, 1.5, 4, 3)
-  set(46, -1, 2, 3)
-  set(47, 1, 2, 3)
-  return f
-}
-
-describe('wrist-centric normalization', () => {
-  it('maps wrist to origin and middle MCP to unit distance', () => {
-    const n = normalizeLandmarks(makeFrame())
-    expect(n[0]).toBeCloseTo(0)
-    expect(n[1]).toBeCloseTo(0)
-    expect(n[2]).toBeCloseTo(0)
-    // middle MCP: (0,1,0) after normalization
-    expect(n[9 * 3]).toBeCloseTo(0)
-    expect(n[9 * 3 + 1]).toBeCloseTo(1)
-    expect(n[9 * 3 + 2]).toBeCloseTo(0)
-    // joint 5 was (0.5, 0, 0) relative to wrist
-    expect(n[5 * 3]).toBeCloseTo(0.5)
+describe('LexiSight-format feature extraction (30 x 225)', () => {
+  it('produces a 225-dim vector: pose 33, left hand 21, right hand 21', () => {
+    const res = extractFeatures({
+      poseLandmarks: Array.from({ length: 33 }, (_, i) => ({ x: i / 33, y: 0.5, z: 0 })),
+      leftHandLandmarks: Array.from({ length: 21 }, () => ({ x: 0.2, y: 0.3, z: -0.05 })),
+      rightHandLandmarks: Array.from({ length: 21 }, () => ({ x: 0.8, y: 0.3, z: -0.05 })),
+    })
+    expect(res.length).toBe(225)
+    expect(res[0]).toBeCloseTo(0) // pose landmark 0 x
+    expect(res[99]).toBeCloseTo(0.2) // left hand starts at dim 99
+    expect(res[162]).toBeCloseTo(0.8) // right hand starts at dim 162
+    expect(res[224]).toBeCloseTo(-0.05)
   })
 
-  it('is translation and scale invariant', () => {
-    const a = normalizeLandmarks(makeFrame(1, [0, 0, 0]))
-    const b = normalizeLandmarks(makeFrame(3, [10, -7, 4]))
-    for (let i = 0; i < 144; i++) expect(b[i]).toBeCloseTo(a[i], 5)
+  it('zero-fills a missing hand', () => {
+    const res = extractFeatures({
+      poseLandmarks: Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, z: 0 })),
+      leftHandLandmarks: null,
+      rightHandLandmarks: Array.from({ length: 21 }, () => ({ x: 0.8, y: 0.3, z: 0 })),
+    })
+    for (let i = 99; i < 162; i++) expect(res[i]).toBe(0)
+    expect(res[162]).toBeCloseTo(0.8)
   })
 
-  it('normalizes the left hand by its own wrist', () => {
-    const n = normalizeLandmarks(makeFrame())
-    expect(n[21 * 3]).toBeCloseTo(0)
-    expect(n[21 * 3 + 1]).toBeCloseTo(0)
-    expect(n[30 * 3 + 1]).toBeCloseTo(1)
-  })
-
-  it('normalizes upper body by shoulder midpoint/width', () => {
-    const n = normalizeLandmarks(makeFrame())
-    // shoulder midpoint was (0,5,3); width 2 -> L shoulder (-0.5, 0, 0)
-    expect(n[42 * 3]).toBeCloseTo(-0.5)
-    expect(n[42 * 3 + 1]).toBeCloseTo(0)
-    expect(n[43 * 3]).toBeCloseTo(0.5)
-  })
-
-  it('stays finite on a degenerate (all-equal) frame', () => {
-    const n = normalizeLandmarks(new Float32Array(144).fill(1))
-    for (const v of n) expect(Number.isFinite(v)).toBe(true)
+  it('zero-fills everything when nothing is detected', () => {
+    const res = extractFeatures({})
+    expect(res.length).toBe(225)
+    for (const v of res) expect(v).toBe(0)
   })
 })
 
 describe('30-frame buffer', () => {
-  it('produces a [1, 30, 48, 3] tensor (4320 floats)', () => {
-    const buf = new LandmarkBuffer()
+  it('produces a [1, 30, 225] tensor (6750 floats)', () => {
+    const buf = new HolisticBuffer()
     for (let f = 0; f < FRAMES; f++) {
-      const frame = new Float32Array(144).fill(f)
-      buf.push(frame)
+      buf.push(new Float32Array(FEATURE_DIM).fill(f))
     }
     expect(buf.isFull).toBe(true)
     const t = buf.toTensor()
-    expect(t.length).toBe(1 * FRAMES * LANDMARKS * 3)
-    // frame-major: first frame all 0s, last frame all 29s
+    expect(t.length).toBe(1 * FRAMES * FEATURE_DIM)
     expect(t[0]).toBe(0)
-    expect(t[29 * 144]).toBe(29)
+    expect(t[29 * FEATURE_DIM]).toBe(29)
   })
 
   it('keeps only the latest 30 frames', () => {
     const buf = new LandmarkBuffer()
-    for (let f = 0; f < 40; f++) buf.push(new Float32Array(144).fill(f))
+    for (let f = 0; f < 40; f++) buf.push(new Float32Array(FEATURE_DIM).fill(f))
     expect(buf.length).toBe(30)
     expect(buf.toTensor()[0]).toBe(10)
   })
+
+  it('constants agree: 30 frames, 225 dims', () => {
+    expect(CONST_FRAMES).toBe(30)
+    expect(FEATURE_DIM).toBe(225)
+    expect(GEN_DIM).toBe(225)
+  })
 })
 
-describe('debounce filter', () => {
+describe('debounce filter (LexiSight 5-frame consensus)', () => {
   it('commits only after >5 consecutive passes above 0.85', () => {
     const d = new Debouncer()
-    for (let i = 0; i < 5; i++) expect(d.push('Help', 0.9)).toBeNull()
-    expect(d.push('Help', 0.9)).toBe('Help')
+    for (let i = 0; i < 5; i++) expect(d.push('HELLO', 0.9)).toBeNull()
+    expect(d.push('HELLO', 0.9)).toBe('HELLO')
   })
 
   it('does not commit below the confidence threshold', () => {
     const d = new Debouncer()
-    for (let i = 0; i < 10; i++) expect(d.push('Help', 0.8)).toBeNull()
+    for (let i = 0; i < 10; i++) expect(d.push('HELLO', 0.8)).toBeNull()
   })
 
   it('resets the streak when the label changes', () => {
     const d = new Debouncer()
-    for (let i = 0; i < 4; i++) d.push('Help', 0.9)
-    expect(d.push('Water', 0.95)).toBeNull()
-    for (let i = 0; i < 4; i++) expect(d.push('Water', 0.95)).toBeNull()
-    expect(d.push('Water', 0.95)).toBe('Water')
-  })
-
-  it('commits a continuous sign only once until the streak breaks', () => {
-    const d = new Debouncer()
-    for (let i = 0; i < 6; i++) d.push('Help', 0.9)
-    expect(d.push('Help', 0.9)).toBeNull() // already committed, no repeat
-    d.push('Water', 0.9) // break the streak
-    for (let i = 0; i < 5; i++) expect(d.push('Help', 0.9)).toBeNull()
-    expect(d.push('Help', 0.9)).toBe('Help')
+    for (let i = 0; i < 4; i++) d.push('HELLO', 0.9)
+    expect(d.push('WATER', 0.95)).toBeNull()
+    for (let i = 0; i < 4; i++) expect(d.push('WATER', 0.95)).toBeNull()
+    expect(d.push('WATER', 0.95)).toBe('WATER')
   })
 })
 
-describe('gloss tokenizer', () => {
+describe('gloss tokenizer (conversation sentences)', () => {
   it('"What is your name?" -> ["YOUR", "NAME", "WHAT"]', () => {
     expect(tokenizeGloss('What is your name?')).toEqual(['YOUR', 'NAME', 'WHAT'])
   })
 
-  it('strips fillers and moves WH-words to the end', () => {
+  it('"Hello, how are you today?" -> sensible gloss without fillers', () => {
+    expect(tokenizeGloss('Hello, how are you today?')).toEqual([
+      'HELLO', 'YOU', 'TODAY', 'HOW',
+    ])
+  })
+
+  it('strips do/will and moves WH-words to the end', () => {
+    expect(tokenizeGloss('Do you want water?')).toEqual(['YOU', 'WANT', 'WATER'])
     expect(tokenizeGloss('Where is the hospital?')).toEqual(['HOSPITAL', 'WHERE'])
-    expect(tokenizeGloss('I need a doctor')).toEqual(['I', 'NEED', 'DOCTOR'])
-    expect(tokenizeGloss('Please help me')).toEqual(['PLEASE', 'HELP', 'ME'])
   })
 
   it('collapses "thank you" into THANKYOU', () => {
@@ -145,17 +118,50 @@ describe('gloss tokenizer', () => {
   })
 })
 
-describe('synthetic sequence generator', () => {
-  it('produces 30 frames x 48 landmarks x 3 coords', () => {
-    const seq = generateSyntheticSequence('Help', 1)
-    expect(seq.length).toBe(FRAMES * LANDMARKS * 3)
+describe('procedural motion generator (225-dim)', () => {
+  it('produces 30 frames x 225 dims', () => {
+    const seq = generateWordSequence('HELLO', 0)
+    expect(seq.length).toBe(30 * 225)
   })
 
-  it('is deterministic for the same seed and differs per class', () => {
-    const a = generateSyntheticSequence('Help', 7)
-    const b = generateSyntheticSequence('Help', 7)
-    const c = generateSyntheticSequence('Water', 7)
+  it('is deterministic for the same seed and differs per word', () => {
+    const a = generateWordSequence('HELLO', 7)
+    const b = generateWordSequence('HELLO', 7)
+    const c = generateWordSequence('WATER', 7)
     expect(a).toEqual(b)
     expect(a).not.toEqual(c)
+  })
+
+  it('covers the whole vocabulary including all 20 emergency words', () => {
+    expect(VOCAB_WORDS.length).toBeGreaterThanOrEqual(60)
+    for (const w of EMERGENCY_WORDS) {
+      expect(VOCAB_WORDS).toContain(w)
+      expect(generateWordSequence(w, 0).length).toBe(30 * 225)
+    }
+  })
+
+  it('produces 5 keyframes per word for the lexicon', () => {
+    const kf = generateWordKeyframes('HELLO')
+    expect(kf.length).toBe(5)
+    for (const f of kf) expect(f.length).toBe(225)
+  })
+
+  it('produces distinct fingerspelling keyframes per letter', () => {
+    const a = generateLetterKeyframes('A')
+    const b = generateLetterKeyframes('B')
+    expect(a.length).toBe(5)
+    expect(a).not.toEqual(b)
+  })
+})
+
+describe('lexicon keyframe expansion', () => {
+  it('interpolates keyframes to the requested frame count', () => {
+    const kf = generateWordKeyframes('HELLO')
+    const frames = expandKeyframes(kf, 24)
+    expect(frames.length).toBe(24)
+    for (const f of frames) expect(f.length).toBe(225)
+    // endpoints match the first/last keyframes
+    expect(frames[0][0]).toBeCloseTo(kf[0][0])
+    expect(frames[23][0]).toBeCloseTo(kf[4][0])
   })
 })

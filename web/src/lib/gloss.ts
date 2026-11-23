@@ -10,7 +10,10 @@
  * Example: "What is your name?" -> ["YOUR", "NAME", "WHAT"]
  */
 
-const FILLERS = new Set(['is', 'are', 'the', 'a', 'an', 'am', 'it', 'to', 'of'])
+const FILLERS = new Set([
+  'is', 'are', 'the', 'a', 'an', 'am', 'it', 'to', 'of',
+  'do', 'does', 'did', 'will', 'would', 'should', 'just',
+])
 const WH_WORDS = new Set(['what', 'where', 'when', 'who', 'why', 'how', 'which'])
 
 export function tokenizeGloss(text: string): string[] {

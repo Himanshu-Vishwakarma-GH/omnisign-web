@@ -1,7 +1,7 @@
 node_modules/
 dist/
-.venv/
-__pycache__/
-*.pyc
-ml/checkpoints/
 .DS_Store
+# NOTE: web/public/models/lexisight/ is intentionally COMMITTED.
+# The user approved fetching only the LexiSight model data files
+# (2026-11-23) and wiring them into the app; GitHub Pages can only serve
+# them if they are in the repo. No LexiSight source code is included.
